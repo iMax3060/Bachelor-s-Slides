@@ -1,0 +1,549 @@
+\section[Page Eviction Strategies]{Page Eviction Strategies in the Context of Pointer Swizzling} \label{sec:eviction}
+
+\frame{\sectionpage}
+
+\begin{frame}
+
+	\frametitle{Motivation \uline{not} to Analyze Different Page Eviction Strategies}
+	
+	\begin{itemize}
+		\uncover<2->{\item	Even LRU results in decent hit rates}
+	\end{itemize}
+	
+	\tikzset{%
+		every node/.style = {font = \sffamily},
+		phantom/.style = {rectangle, draw = none, thick},
+		layer/.style = {rectangle, draw, thick},
+		toplayers/.style = {layer},
+		buffer/.style = {layer},
+		storage/.style = {layer},		
+		disk/.style = {cylinder, cylinder uses custom fill, shape border rotate = 90, draw, minimum height = 1cm, minimum width = 1.5cm, thick},
+		disktext/.style = {},
+		interfacearrow/.style = {<->, thick, draw = black}
+	}
+
+	\centering
+	\uncover<2->{\begin{adjustbox}{width = \textwidth}
+		\begin{tikzpicture}
+			\begin{axis}[title = {TPC-C with Warehouses: 100, Threads: 25},
+					   axis on top,
+			 		   width = \textwidth,
+					   height = {\textheight - 6em},
+					   xlabel = {LRU stack depth},
+					   xlabel near ticks,
+					   xmode = log,
+					   xmin = 5e-1,
+					   xmax = 1e8,
+					   ymode = normal,
+					   ybar interval,
+					   x tick label as interval = false,
+					   xtick = {},
+					   xtickten = {0, 1, ..., 8},
+					   scaled y ticks = false,
+					   ylabel = {\# of references},
+					   ylabel near ticks,
+					   grid = none]
+				\addplot [fill = gray!50] table [x = Lower, y = Count] {./tex/data/lru_stackdepth_histograms/tpcc/ln_histogram_lrused_stackdepth/ln_histogram_LRUsed_stackdepth_analysis_wh100_t25.csv};
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}}
+	
+\end{frame}
+
+\begin{frame}
+
+	\frametitle{But ...}
+	
+	\begin{itemize}
+		\uncover<2->{\item	Page reference pattern containing a loop slightly to long to fit in the buffer pool:}
+			\begin{itemize}
+				\uncover<3->{\item	\textbf{OPT:} Hit rate close to \num{1}}
+				\uncover<4->{\item	\textbf{LRU:} Hit rate of \num{0}}
+			\end{itemize}
+		\uncover<5->{\item	Some pages gets referenced very frequent for a limited time:}
+			\begin{itemize}
+				\uncover<6->{\item	\textbf{OPT:} Pages would be evicted after their last reference}
+				\uncover<7->{\item	\textbf{LFU:} Pages waste buffer frames probably during the whole running time of the DB}
+			\end{itemize}
+		\uncover<8->{\item	Huge access time gap $\implies$ Every saved page miss significantly improves the performance}
+		\uncover<9->{\item	Pointer swizzling even amplifies that effect}
+	\end{itemize}
+		
+\end{frame}
+
+\subsection{Probable pitfalls when Implementing a Page Eviction Strategy for a DBMS Buffer Manager}
+
+\frame{\subsectionpage}
+
+\begin{frame}
+
+	\frametitle{General Problems Concerning DBMS Buffer Managers}
+
+	\begin{itemize}
+		\uncover<2->{\item	Fixed pages cannot be evicted but a long timespan between a fix and an unfix of a page could make it a candidate for eviction.}
+		\uncover<3->{\item	A page pinned for refix cannot be evicted but a long timespan in which a page is pinned could make it a candidate for eviction.}
+		\uncover<4->{\item	Dirty pages cannot be evicted but a page being dirty for a long timespan due to the update propagation using write-back policy could make it a candidate for eviction.}
+	\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+
+	\frametitle{Additional Problem When Using Pointer Swizzling}
+
+	\begin{itemize}
+		\uncover<2->{\item	A page containing swizzled pointer cannot be evicted but a page unfixed before the last unfix of one of its child pages could make it a candidate for eviction before its child pages got evicted.}
+	\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+
+	\frametitle{Solutions}
+
+	\begin{itemize}
+		\uncover<2->{\item	Check each of the restrictions before the eviction of a page.}
+		\uncover<3->{\item	Update the statistics of the eviction strategy during an unfix, too.}
+		\uncover<4->{\item	Update the statistics of the eviction strategy during an pin and unpin, too.}
+		\uncover<5->{\item	Use write-thru for update propagation or a page cleaner decoupled from the buffer pool as proposed in \cite{Sauer:2016}.}
+		\uncover<6->{\item	Use a page eviction strategy that takes into account the content of pages (like the structure of an B tree).}
+	\end{itemize}
+
+\end{frame}
+
+\subsection{Evaluated Page Replacement Strategies}
+
+\frame{\subsectionpage}
+
+\begin{frame}
+
+	\frametitle{RANDOM}
+	
+	\begin{block}{\uncover<1->{Overview}}
+		\begin{itemize}
+			\uncover<2->{\item	Simplest page eviction strategy}
+			\uncover<3->{\item	Evicts a random page that can be evicted}
+			\uncover<4->{\item	Won't evict frequently used pages as they're latched all the time}
+		\end{itemize}
+	\end{block}
+
+\end{frame}
+
+\begin{frame}
+
+	\frametitle{GCLOCK}
+	
+	\begin{block}{\uncover<1->{Overview}}
+		\begin{itemize}
+			\uncover<2->{\item	Slight enhancement of the CLOCK algorithm: \emph{generalized CLOCK}}
+			\uncover<3->{\item	Uses finer-grained statistics about the recency of page references}
+			\uncover<4->{\item	Parameter $k$ defines granulation of statistics}
+			\begin{itemize}
+				\uncover<5->{\item	\textbf{$\bm{k = 1}$: }CLOCK}
+				\uncover<6->{\item	\textbf{$\bm{k = \#\text{frames}}$: }Similar to LRU}
+			\end{itemize}
+		\end{itemize}
+	\end{block}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+	\frametitle{GCLOCK}
+	
+	\tikzset{%
+		node distance = 1cm,
+		refBit/.style = {draw = black, shape = rectangle},
+		hand/.style = {very thick, draw = black},
+		stack/.style = {rectangle split, rectangle split parts = #1, draw = black}
+	}
+
+	\begin{block}{Example}
+		\centering
+		\begin{adjustbox}{totalheight = \textheight - 5.0em}
+			\begin{tikzpicture}
+				\node[]		(t1_center)	[]						{};
+				\begin{scope}[start chain = circle placed {nodes around center = 45:24:t1_center:7.5em},
+						      every node/.append style = {on chain = circle}]
+					\foreach \cnt/\text in {0/4, 1/3, 2/2, 3/4, 4/4, 5/4, 6/0, 7/1, 8/1, 9/0, 10/0, 11/0, 12/0, 13/3, 14/3, 15/3, 16/2, 17/2, 18/1, 19/4, 20/4, 21/0, 22/1, 23/0}
+						\node[refBit] (t1_\cnt) {\text};
+					\chainin (circle-begin);
+					\path[->]	
+						(t1_center.center)		edge[hand]		(t1_12);
+					\path[->]	
+						($(t1_center.center)!0.8!(t1_12)$)		edge[bend left = 15]		($(t1_center.center)!0.8!(t1_10)$);
+					\node[]		(t1_head)	[left = -.125em of t1_12]	{\small head};
+					\node[]		(t1_tail)	[left = -.125em of t1_13]	{\small tail};
+				\end{scope}
+			\end{tikzpicture}
+		\end{adjustbox}
+	\end{block}
+
+\end{frame}
+
+\begin{frame}
+
+	\frametitle{GCLOCK}
+	
+	\begin{block}{\uncover<1->{Advantage of Higher $k$-Values}}
+		\begin{itemize}
+			\uncover<3->{\item	More detailed statistics about page references \\ $\implies$ Higher hit rate \\ $\implies$ Higher performance}
+		\end{itemize}
+	\end{block}
+	\begin{block}{\uncover<2->{Advantages of Lower $k$-Values}}
+		\begin{itemize}
+			\uncover<4->{\item	Lower processing time required to find an eviction victim \\ $\implies$ Higher performance}
+			\uncover<5->{\item	Lower memory overhead due to shorter \lstinline{referenced}-numbers}
+		\end{itemize}
+	\end{block}
+	
+	\uncover<6->{$\implies$ Trade-off between CPU- and I/O-optimization}
+
+\end{frame}
+
+\begin{frame}
+
+	\frametitle{CAR}
+	
+	\begin{block}{\uncover<1->{Overview}}
+		\begin{itemize}
+			\uncover<2->{\item	Extensive enhancement of the CLOCK algorithm: \emph{Clock with Adaptive Replacement} \cite{Bansal:2004}}
+			\uncover<3->{\item	Approximation of the ARC page eviction strategy}
+			\uncover<4->{\item	Uses two clocks and two LRU-lists}
+			\uncover<5->{\item	Advantages of CAR compared to CLOCK:}
+			\begin{itemize}
+				\uncover<6->{\item	Weighted consideration of reference recency and frequency}
+				\uncover<7->{\item	Scan-resistence}
+			\end{itemize}
+		\end{itemize}
+	\end{block}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+	\frametitle{CAR}
+	
+	\tikzset{%
+		node distance = 1cm,
+		refBit/.style = {draw = black, shape = rectangle},
+		hand/.style = {very thick, draw = black},
+		stack/.style = {rectangle split, rectangle split parts = #1, draw = black}
+	}
+
+	\begin{block}{Example}
+		\centering
+		\vspace{.5em}
+		\begin{adjustbox}{totalheight = \textheight - 5.0em}
+			\begin{tikzpicture}
+				\node[]		(t1_center)	[]						{};
+				\begin{scope}[start chain = circle placed {nodes around center = 45:12:t1_center:5em},
+						      every node/.append style = {on chain = circle}]
+					\foreach \cnt/\text in {0/1, 1/0, 2/1, 3/0, 4/1, 5/1, 6/0, 7/1, 8/0, 9/1, 10/0, 11/0}
+						\node[refBit] (t1_\cnt) {\text};
+					\chainin (circle-begin);
+					\path[->]	
+						(t1_center.center)		edge[hand]		(t1_10);
+					\path[->]	
+						($(t1_center.center)!0.75!(t1_10)$)		edge[bend left = 15]		($(t1_center.center)!0.75!(t1_9)$);
+					\node[]		(t1_label)	[below = 6em of t1_center.center]	{\Large $T_1$};
+					\node[]		(t1_head)	[right = -.125em of t1_10]	{\small head};
+					\node[]		(t1_tail)	[right = -.125em of t1_11]	{\small tail};
+					
+					\node[stack = 20]	(b1)		[left = 6.5em of t1_center.center]	{};
+					\node[]		(b1_label)	[below = .125em of b1]			{\Large $B_1$};
+					\node[]		(b1_lru)	[right = -.125em of b1.one east]		{\small LRU};
+					\node[]		(b1_mru)	[right = -.125em of b1.twenty east]	{\small MRU};
+				\end{scope}
+				
+				\node[]		(t2_center)	[right = 6cm of t1_center]		{};
+				\begin{scope}[start chain = circle placed {nodes around center = 45:24:t2_center:7.5em},
+						      every node/.append style = {on chain = circle}]
+					\foreach \cnt/\text in {0/1, 1/0, 2/1, 3/0, 4/1, 5/1, 6/0, 7/1, 8/0, 9/1, 10/0, 11/0, 12/1, 13/0, 14/1, 15/1, 16/0, 17/1, 18/0, 19/1, 20/1, 21/0, 22/1, 23/0}
+						\node[refBit] (t2_\cnt) {\text};
+					\chainin (circle-begin);
+					\path[->]	
+						(t2_center.center)		edge[hand]		(t2_12);
+					\path[->]	
+						($(t2_center.center)!0.8!(t2_12)$)		edge[bend left = 15]		($(t2_center.center)!0.8!(t2_10)$);
+					\node[]		(t2_label)	[below = 8.5em of t2_center.center]	{\Large $T_2$};
+					\node[]		(t2_head)	[left = -.125em of t2_12]	{\small head};
+					\node[]		(t2_tail)	[left = -.125em of t2_13]	{\small tail};
+					
+					\node[stack = 16]	(b2)		[right = 9em of t2_center.center]	{};
+					\node[]		(b2_label)	[below = .125em of b2]			{\Large $B_2$};
+					\node[]		(b2_lru)	[left = -.125em of b2.one west]		{\small LRU};
+					\node[]		(b2_mru)	[left = -.125em of b2.sixteen west]	{\small MRU};
+				\end{scope}
+			\end{tikzpicture}
+		\end{adjustbox}
+	\end{block}
+
+\end{frame}
+
+\subsection{Performance Evaluation}
+
+\frame{\subsectionpage}
+
+\begin{frame}[fragile]
+
+	\frametitle{Buffer Pool Without Pointer Swizzling (TPC-C)}
+	
+	\tikzset{%
+		DBSize/.style = { - , thick, dotted},
+		DBSizeMark/.style = {draw = none, rotate = 90, anchor = south},
+		latchedStyle/.style = {color = Maroon},
+		gclockStyle/.style = {color = BurntOrange},
+		carStyle/.style = {color = OliveGreen},
+		latchedRate/.style = {latchedStyle, mark = x, only marks},
+		gclockRate/.style = {gclockStyle, mark = x, only marks},
+		carRate/.style = {carStyle, mark = x, only marks},
+		DBSize/.append style = {draw = purple},
+		DBSizeMark/.append style = {text = purple}
+	}
+
+	\centering
+	\begin{adjustbox}{totalheight = \textheight - 2.0em}
+		\begin{tikzpicture}[]
+			\pgfplotsset{set layers}
+			\begin{axis}[xlabel = {\ttfamily sm\_bufpoolsize $\left[\si{\gibi\byte}\right]$},
+					   xlabel near ticks,
+					   xmin = 0,
+					   xmax = 20000,
+					   xtick distance = {1000},
+					   xticklabels = {,0,1,...,20},
+					   scaled x ticks = false,
+					   minor x tick num = 9,
+					   ylabel = {$\text{average transaction throughput }\left[\sfrac{\text{transactions}}{\text{s}}\right]$},
+					   ylabel near ticks,
+					   ymin = 0,
+					   ymax = 18000,
+					   ymode = normal,
+					   ytick distance = {2000},
+					   scaled y ticks = false,
+					   minor y tick num = 1,
+					   axis y line* = left,
+					   grid = major,
+					   legend entries = {\small RANDOM, \small GCLOCK, \small CAR},
+					   legend style = {at = {(-.2, -.175)}, anchor = north west, legend columns = -1, /tikz/every even column/.append style = {column sep = 0.025cm}},
+					   scale only axis,
+					   width = .875\textwidth,
+					   height = .85\textheight]		
+				\draw[DBSize]				({axis cs:13215, 0} |- {rel axis cs:0, 0})			--		({axis cs:13215, 0} |- {rel axis cs:0, 1});
+				\node[DBSizeMark]			at ({axis cs:13215, 10000})		{initial database size};
+
+				\addplot[visible on = <2->, latchedStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_noswizzling_latched.csv};
+				\addplot[visible on = <3->, gclockStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_noswizzling_gclock.csv};
+				\addplot[visible on = <4->, carStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_noswizzling_car.csv};
+			\end{axis}
+
+			\begin{axis}[xlabel = {\ttfamily sm\_bufpoolsize $\left[\si{\gibi\byte}\right]$},
+					   xlabel near ticks,
+					   xmin = 0,
+					   xmax = 20000,
+					   xtick distance = {1000},
+					   xticklabels = {,0,1,..,20},
+					   scaled x ticks = false,
+					   minor x tick num = 9,
+					   axis x line = none,
+					   ylabel = {average hit rate},
+					   ylabel near ticks,
+					   ylabel style = {rotate = 180},
+					   ymin = .65,
+					   ymax = 1.02,
+					   ymode = log,
+					   scaled y ticks = false,
+					   minor y tick num = 1,
+					   axis y line* = right,
+					   legend entries = {\small RANDOM, \small GCLOCK, \small CAR},
+					   legend style = {at = {(1.2, -.175)}, anchor = north east, font = \scriptsize, legend columns = -1, /tikz/every even column/.append style = {column sep = 0.125cm}},
+					   scale only axis,
+					   width = .875\textwidth,
+					   height = .85\textheight]		
+
+				\addplot[visible on = <5->, latchedRate, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagehitrate, y error = standarddeviationhitrate] {./tex/data/tpcc_noswizzling_latched.csv};
+				\addplot[visible on = <6->, gclockRate, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagehitrate, y error = standarddeviationhitrate] {./tex/data/tpcc_noswizzling_gclock.csv};
+				\addplot[visible on = <7->, carRate, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagehitrate, y error = standarddeviationhitrate] {./tex/data/tpcc_noswizzling_car.csv};
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}
+	
+\end{frame}
+
+\begin{frame}[fragile]
+
+	\frametitle{Buffer Pool With Pointer Swizzling (TPC-C)}
+	
+	\tikzset{%
+		DBSize/.style = { - , thick, dotted},
+		DBSizeMark/.style = {draw = none, rotate = 90, anchor = south},
+		latchedStyle/.style = {color = Maroon},
+		gclockStyle/.style = {color = BurntOrange},
+		carStyle/.style = {color = OliveGreen},
+		latchedRate/.style = {latchedStyle, mark = x, only marks},
+		gclockRate/.style = {gclockStyle, mark = x, only marks},
+		carRate/.style = {carStyle, mark = x, only marks},
+		DBSize/.append style = {draw = purple},
+		DBSizeMark/.append style = {text = purple}
+	}
+
+	\centering
+	\begin{adjustbox}{totalheight = \textheight - 2.0em}
+		\begin{tikzpicture}[]
+			\pgfplotsset{set layers}
+			\begin{axis}[xlabel = {\ttfamily sm\_bufpoolsize $\left[\si{\gibi\byte}\right]$},
+					   xlabel near ticks,
+					   xmin = 0,
+					   xmax = 20000,
+					   xtick distance = {1000},
+					   xticklabels = {,0,1,...,20},
+					   scaled x ticks = false,
+					   minor x tick num = 9,
+					   ylabel = {$\text{average transaction throughput }\left[\sfrac{\text{transactions}}{\text{s}}\right]$},
+					   ylabel near ticks,
+					   ymin = 0,
+					   ymax = 18000,
+					   ymode = normal,
+					   ytick distance = {2000},
+					   scaled y ticks = false,
+					   minor y tick num = 1,
+					   axis y line* = left,
+					   grid = major,
+					   legend entries = {\small RANDOM, \small GCLOCK, \small CAR},
+					   legend style = {at = {(-.2, -.175)}, anchor = north west, legend columns = -1, /tikz/every even column/.append style = {column sep = 0.025cm}},
+					   scale only axis,
+					   width = .875\textwidth,
+					   height = .85\textheight]		
+				\draw[DBSize]				({axis cs:13215, 0} |- {rel axis cs:0, 0})			--		({axis cs:13215, 0} |- {rel axis cs:0, 1});
+				\node[DBSizeMark]			at ({axis cs:13215, 10000})		{initial database size};
+
+				\addplot[visible on = <2->, latchedStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_swizzling_latched.csv};
+				\addplot[visible on = <3->, gclockStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_swizzling_gclock.csv};
+				\addplot[visible on = <4->, carStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_swizzling_car.csv};
+
+			\end{axis}
+
+			\begin{axis}[xlabel = {\ttfamily sm\_bufpoolsize $\left[\si{\gibi\byte}\right]$},
+					   xlabel near ticks,
+					   xmin = 0,
+					   xmax = 20000,
+					   xtick distance = {1000},
+					   xticklabels = {,0,1,..,20},
+					   scaled x ticks = false,
+					   minor x tick num = 9,
+					   axis x line = none,
+					   ylabel = {$\text{average hit rate}$},
+					   ylabel near ticks,
+					   ylabel style = {rotate = 180},
+					   ymin = .65,
+					   ymax = 1.02,
+					   ymode = log,
+					   scaled y ticks = false,
+					   minor y tick num = 1,
+					   axis y line* = right,
+					   legend entries = {\small RANDOM, \small GCLOCK, \small CAR},
+					   legend style = {at = {(1.2, -.175)}, anchor = north east, font = \scriptsize, legend columns = -1, /tikz/every even column/.append style = {column sep = 0.125cm}},
+					   scale only axis,
+					   width = .875\textwidth,
+					   height = .85\textheight]		
+
+				\addplot[visible on = <5->, latchedRate, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagehitrate, y error = standarddeviationhitrate] {./tex/data/tpcc_swizzling_latched.csv};
+				\addplot[visible on = <6->, gclockRate, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagehitrate, y error = standarddeviationhitrate] {./tex/data/tpcc_swizzling_gclock.csv};
+				\addplot[visible on = <7->, carRate, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagehitrate, y error = standarddeviationhitrate] {./tex/data/tpcc_swizzling_car.csv};
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}
+	
+\end{frame}
+
+\begin{frame}[fragile]
+
+	\frametitle{Operation Performance}
+	
+	\pgfplotsset{%
+		every axis/.append style = {
+			ylabel near ticks,
+			y label style = {font = \small},
+			yticklabel style = {font = \tiny},
+			ybar,
+			xmin = -1.5,
+			xmax = 1.5,
+			xtick = {-1, 0, 1},
+			xticklabels = {{RANDOM}, {GCLOCK}, {CAR}},
+			x tick label style = {align = center, font = \footnotesize},
+			xlabel near ticks,
+			scale only axis,
+			width = .95\textwidth,
+			height = .85\textheight]		
+		}
+	}
+
+	\tikzset{%
+		noSwizzle/.style = {very thick},
+		swizzle/.style = {very thick},
+		noSwizzleTotal/.style = {very thick, ycomb},
+		swizzleTotal/.style = {very thick, ycomb},
+		noSwizzle/.append style = {draw = blue, fill = blue!50},
+		swizzle/.append style = {draw = black, fill = black!25},
+		noSwizzleTotal/.append style = {draw = blue, fill = blue!50, mark = *},
+		swizzleTotal/.append style = {draw = black, fill = black!25, mark = *}
+	}
+
+	\centering
+	\begin{adjustbox}{totalheight = \textheight - 2.0em}
+		\begin{tikzpicture}
+			\begin{axis}[ylabel = {$\text{average execution time }\left[\si{\nano\second}\right]$},
+					  ymin = 0,
+					  ymax = 2.25e+06,
+					  ymode = normal,
+					  scaled y ticks = false,
+					  minor y tick num = 4,
+					  axis y line* = left,
+					  legend entries = {Traditional Buffer Pool, Pointer Swizzling Buffer Pool},
+					  legend style = {at = {(-.15, -.175)}, anchor = west},
+					  bar width = 4em,
+					  ymajorgrids = true]
+				\addplot[visible on = <2->, noSwizzle] coordinates
+					{(-1, 52277.8) (0, 70276.2) (1, 1.97588e+06 + 19186)};
+				\addplot[visible on = <4->, swizzle] coordinates
+					{(-1, 34172.3) (0, 66239.2) (1, 1.95631e+06 + 18463.5)};
+			\end{axis}
+			\begin{axis}[ylabel = {$\text{total execution time }\left[\si{\second}\right]$},
+					  ylabel style = {rotate = 180},
+					  ymin = 0,
+					  ymax = 600,
+					  ymode = normal,
+					  scaled y ticks = false,
+					  minor y tick num = 1,
+					  legend entries = {Traditional Buffer Pool, Pointer Swizzling Buffer Pool},
+					  legend style = {at = {(1.15, -.175)}, anchor = east},
+					  axis y line* = right]
+				\addplot[visible on = <3->, noSwizzleTotal] coordinates
+					{(-1.225, 549.645622) (-.225, 550.379224) (.775, 586.962186)};
+				\addplot[visible on = <5->, swizzleTotal] coordinates
+					{(-.775, 529.055048) (.225, 547.609491) (1.225, 585.685542)};
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}
+	
+\end{frame}
+
+\subsection{Conclusion}
+
+\frame{\subsectionpage}
+
+\begin{frame}
+
+	\frametitle{Conclusion}
+	
+	\begin{block}{\uncover<1->{Performance}}
+		\begin{itemize}
+			\uncover<2->{\item	CAR has a significantly higher hit rate than RANDOM or GCLOCK}
+			\uncover<3->{\item	The hit rate of GCLOCK isn't significantly higher than the one of RANDOM}
+			\uncover<4->{\item	Major differences in hit rate are only for buffer pool sizes of $\leq \frac{1}{10}$ of the database size}
+			\uncover<5->{\item	The computational effort spent to do CAR eviction is \numrange{27}{58} times higher}
+			\uncover<6->{\item	The overall performance of CAR isn't better than the one of RANDOM or GCLOCK}
+		\end{itemize}
+	\end{block}
+
+\end{frame}
