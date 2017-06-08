@@ -1,0 +1,364 @@
+\section[Performance Evaluation of Pointer Swizzling]{Performance Evaluation of the Buffer Management Utilizing Pointer Swizzling} \label{sec:performance}
+
+\frame{\sectionpage}
+
+\subsection{Expected Performance}
+
+\frame{\subsectionpage}
+
+\begin{frame}[fragile]
+
+	\frametitle{Performance of Different Buffer Pool Sizes}
+	
+	\vspace{1.0em}
+
+	\tikzset{%
+		plot/.style = {smooth, mark = \empty},
+		optimal/.style = {very thick},
+		best/.style = {},
+		random/.style = {very thick},
+		possible/.style = {pattern = north east lines},
+		optimal/.append style = {color = green},
+		best/.append style = {color = blue},
+		random/.append style = {color = red},
+		possible/.append style = {pattern color = blue!75}
+	}
+		
+	\centering
+	\begin{adjustbox}{width = \textwidth}
+		\begin{tikzpicture}
+			\begin{axis}[xlabel = \large buffer pool size $B$,
+					   xmin = 0,
+					   xmax = 105,
+					   xtick = {5, 100},
+					   xticklabels = {$B_{min}$, $D$},
+					   ylabel = \large miss rate $MR$,
+					   ymin = 0,
+					   ymax = 105,
+					   ytick = {5, 95, 100},
+					   yticklabels = {$MR_{CS}$, $MR_{max}$, $1$},
+					   legend pos = north east,
+					   area legend,
+					   axis x line = bottom,
+					   axis y line = left,
+					   width = \textwidth,
+					   height = {\textheight - 2.0em}]
+				\addplot+[visible on = <2->, plot, optimal, name path = optimal, line legend] coordinates {
+					(5, 95)
+					(20, 25)
+					(50, 7.5)
+					(100, 5)
+					};
+				\addplot+[visible on = <4->, plot, best, name path = best, empty legend] coordinates {
+					(5, 95)
+					(20, 45)
+					(30, 27.5)
+					(50, 15)
+					(100, 5)
+					};
+				\addplot+[visible on = <3->, plot, random, name path = random, line legend] coordinates {
+					(5, 95)
+					(20, 60)
+					(35, 34)
+					(50, 22.5)
+					(100, 5)
+					};
+							
+				\addplot[visible on = <4->, possible] fill between [of = best and random];
+				
+				\legend{optimal, , random, possible}
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}
+	\vspace{-3.0em}
+	\begin{flushright}\cite{Effelsberg:1984}\cite{Datenbanksysteme_-_Konzepte_und_Techniken_der_Implementierung}\end{flushright}
+	
+\end{frame}
+
+\begin{frame}[fragile]
+
+	\frametitle{Buffer Management with and without Pointer Swizzling
+}
+	
+	\vspace{1.0em}
+
+	\tikzset{%
+		plot/.style = {smooth, mark = \empty},
+		swizzling/.style = {plot},
+		noswizzling/.style = {plot},
+		threshold/.style = {draw = black},
+		thresholdArrow/.style = {draw = black, ->},
+		thresholdNode/.style = {draw = none, font = \tiny, shape = rectangle, anchor = north, yshift = -5, text width = 45, align = center},
+		swizzling/.append style = {color = green, fill opacity = 0.75},
+		noswizzling/.append style = {color = red, fill opacity = 0.75},
+		swizzlingHit/.style = {swizzling, fill = green!60},
+		swizzlingMiss/.style = {swizzling, fill = green!30},
+		noswizzlingHit/.style = {noswizzling, fill = red!60},
+		noswizzlingMiss/.style = {noswizzling, fill = red!30},
+		threshold/.append style = {thick},
+		thresholdArrow/.append style = {thick},
+		thresholdNode/.append style = {fill = none}
+	}
+	
+	\centering
+	\begin{adjustbox}{width = \textwidth}
+		\begin{tikzpicture}
+			\begin{axis}[xlabel = \large hit rate,
+					   xmin = 0,
+					   xmax = 100,
+					   xtick = {5, 95},
+					   xticklabels = {$HR_{min}$, $HR_{CS}$},
+					   ylabel = \large total execution time,
+						   y label style = {at = {(axis description cs:0.125, 0.5)}, anchor = south},
+					   ylabel near ticks,
+					   ymin = 0,
+					   ymax = 101,
+					   ytick = \empty,
+					   stack plots = y,
+					   axis x line = bottom,
+					   axis y line = left,
+					   width = \textwidth,
+					   height = {\textheight - 2.0em}]
+				\addplot[noswizzlingHit, visible on = <2->, name path = noswizzlingHit] coordinates {
+					(5, 3)
+					(95, 60)}
+					\closedcycle; \label{noswizzlingHits}
+				\addplot[noswizzlingMiss, visible on = <4->, name path = noswizzlingMiss] coordinates {
+					(5, 80)
+					(95, 4)}
+					\closedcycle; \label{noswizzlingMisses}
+			\end{axis}
+			
+			\begin{axis}[xlabel = \large hit rate,
+					   xmin = 0,
+					   xmax = 100,
+					   xtick = {5, 95},
+					   xticklabels = {$HR_{min}$, $HR_{CS}$},
+					   ylabel = \large total execution time,
+					   ymin = 0,
+					   ymax = 101,
+					   ytick = \empty,
+					   stack plots = y,
+				  	   legend style = {at = {(1.05, 1.05)}, font = \tiny},
+					   area legend,
+					   axis x line = bottom,
+					   axis y line = left,
+					   width = \textwidth,
+					   height = {\textheight - 2.0em},
+					   hide axis]
+				\addlegendimage{/pgfplots/refstyle = noswizzlingHits}
+				\addlegendentry{Page Hits without Pointer Swizzling}
+				\addlegendimage{/pgfplots/refstyle = noswizzlingMisses}
+				\addlegendentry{Page Misses without Pointer Swizzling}
+				
+				\path[visible on = <6->, threshold]			(33.42, 0)			--		(33.42, 101);
+				\path[visible on = <6->, thresholdArrow]	(33.42, 62.5)		--	node[thresholdNode, xshift = -15]	{faster without pointer swizzling}	(33.42 - 10, 62.5);
+				\path[visible on = <6->, thresholdArrow]	(33.42, 62.5)		--	node[thresholdNode, xshift = 15]	{faster with pointer swizzling}	(33.42 + 10, 62.5);
+				\addplot[swizzlingHit, visible on = <3->, name path = swizzlingHit] coordinates {
+					(5, 1)
+					(95, 20)}
+					\closedcycle;
+					\addlegendentry{Page Hits with Pointer Swizzling}
+				\addplot[swizzlingMiss, visible on = <5->, name path = swizzlingMiss] coordinates {
+					(5, 100)
+					(95, 5)}
+					\closedcycle;
+					\addlegendentry{Page Misses with Pointer Swizzling}
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}
+	
+\end{frame}
+
+\subsection{Measured Performance}
+
+\frame{\subsectionpage}
+
+\begin{frame}[fragile]
+
+	\frametitle{Transaction Throughput (TPC-C)}
+	
+	\tikzset{%
+		DBSize/.style = { - , thick, dotted},
+		DBSizeMark/.style = {draw = none, rotate = 90, anchor = south},
+		traditionalStyle/.style = {color = blue},
+		swizzlingStyle/.style = {color = black},
+		DBSize/.append style = {draw = purple},
+		DBSizeMark/.append style = {text = purple}
+	}
+
+	\centering
+	\begin{adjustbox}{totalheight = \textheight - 2.0em}
+		\begin{tikzpicture}[spy using outlines =  {square, magnification = 3, connect spies}]
+			\begin{axis}[xlabel = {\ttfamily sm\_bufpoolsize $\left[\si{\gibi\byte}\right]$},
+					   xlabel near ticks,
+					   xmin = 0,
+					   xmax = 20000,
+					   xtick distance = {1000},
+					   xticklabels = {,0,1,...,20},
+					   scaled x ticks = false,
+					   minor x tick num = 9,
+					   ylabel = {$\text{average transaction throughput }\left[\sfrac{\text{transactions}}{\text{s}}\right]$},
+					   ylabel near ticks,
+					   ymin = 0,
+					   ymax = 18000,
+					   ymode = normal,
+					   scaled y ticks = false,
+					   grid = major,
+					   legend entries = {Traditional Buffer Pool, Pointer Swizzling Buffer Pool},
+					   legend pos = south east,
+					   width = 1.3\textwidth,
+					   height = 1.25\textheight]		
+				\draw[DBSize]				(axis cs: 13215, 0)			edge		(axis cs: 13215, 18000);
+				\node[DBSizeMark]			at (axis cs: 13215, 9000)		{initial database size};
+
+				\addplot[visible on = <2->, traditionalStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_noswizzling_performance.csv};
+				\addplot[visible on = <3->, swizzlingStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcc_swizzling_performance.csv};
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}
+	
+\end{frame}
+
+\begin{frame}[fragile]
+
+	\frametitle{Transaction Throughput (TPC-B)}
+	
+	\tikzset{%
+		DBSize/.style = { - , thick, dotted},
+		DBSizeMark/.style = {draw = none, rotate = 90, anchor = south},
+		traditionalStyle/.style = {color = blue},
+		swizzlingStyle/.style = {color = black},
+		DBSize/.append style = {draw = purple},
+		DBSizeMark/.append style = {text = purple}
+	}
+
+	\centering
+	\begin{adjustbox}{totalheight = \textheight - 3.0em}
+		\begin{tikzpicture}[spy using outlines =  {square, magnification = 3, connect spies}]
+			\begin{axis}[xlabel = {\ttfamily sm\_bufpoolsize $\left[\si{\gibi\byte}\right]$},
+					   xlabel near ticks,
+					   xmin = 0,
+					   xmax = 5000,
+					   xtick distance = {1000},
+					   xticklabels = {,0,1,...,5},
+					   scaled x ticks = false,
+					   minor x tick num = 9,
+					   ylabel = {$\text{average transaction throughput }\left[\sfrac{\text{transactions}}{\text{s}}\right]$},
+					   ylabel near ticks,
+					   ymin = 0,
+					   ymax = 55000,
+					   ymode = normal,
+					   scaled y ticks = false,
+					   grid = major,
+					   legend entries = {Traditional Buffer Pool, Pointer Swizzling Buffer Pool},
+					   legend pos = south east,
+					   width = 1.35\textwidth,
+					   height = 1.25\textheight]		
+				\draw[DBSize]				(axis cs: 13215, 0)			edge		(axis cs: 13215, 18000);
+				\node[DBSizeMark]			at (axis cs: 13215, 9000)		{initial database size};
+
+				\addplot[visible on = <2->, traditionalStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcb_noswizzling_performance.csv};
+				\addplot[visible on = <3->, swizzlingStyle, error bars/.cd, y dir = both, y explicit] table[x = buffersize, y = averagequerythroughput, y error = standarddeviationquerythroughput] {./tex/data/tpcb_swizzling_performance.csv};
+			\end{axis}
+		\end{tikzpicture}
+	\end{adjustbox}
+	
+\end{frame}
+
+\begin{frame}[fragile]
+
+	\frametitle{Buffer Pool Performance Acquiring Shared Latches}
+	
+	\pgfplotsset{%
+		every axis/.append style = {
+			ylabel = {$\text{execution time }\left[\si{\nano\second}\right]$},
+			ylabel near ticks,
+			y label style = {font = \small},
+			ymin = 1,
+			yticklabel style = {font = \tiny},
+			ymode = log,
+			scaled y ticks = false,
+			ybar,
+			xmin = -2,
+			xmax = 4,
+			bar width = .6em,
+			xtick = {-1, 0, 1, 2, 3},
+			xticklabels = {{total}, {hit}, {miss}, {miss\\w/o\\evict}, {miss\\w/\\evict}},
+			x tick label style = {align = center, font = \footnotesize},
+			xlabel near ticks,
+			ymajorgrids = true,
+			width = .6\textwidth,
+			height = {\textheight - 2.0em}
+		}
+	}
+
+	\tikzset{%
+		noSwizzle/.style = {very thick},
+		swizzle/.style = {very thick},
+		noSwizzle/.append style = {draw = blue, fill = blue!50},
+		swizzle/.append style = {draw = black, fill = black!25}
+	}
+
+	\newcommand{\noeviction}{
+		\begin{tikzpicture}
+			\begin{axis}[xlabel = {\SI{20}{\gibi\byte} (w/o eviction)},
+					  legend entries = {Traditional Buffer Pool, Pointer Swizzling Buffer Pool},
+					  legend to name = legendname,
+					  legend style = {font = \footnotesize, legend columns = -1, /tikz/every even column/.append style = {column sep = 0.5cm}}]
+				\addplot[noSwizzle, visible on = <2->] coordinates
+					{(-1, 1268.48) (0, 1132.46) (1, 59370.2) (2, 59370.2) (3, 0)};
+				\addplot[swizzle, visible on = <3->] coordinates
+					{(-1, 1277.03) (0, 771.499) (1, 212478) (2, 212478) (3, 0)};
+			\end{axis}
+		\end{tikzpicture}
+	}
+
+	\newcommand{\eviction}{
+		\begin{tikzpicture}
+			\begin{axis}[xlabel = {\SI{500}{\mebi\byte} (w/ eviction)}]
+				\addplot[noSwizzle, visible on = <4->] coordinates
+					{(-1, 299457) (0, 262233) (1, 1.73524e+06) (2, 22653.6) (3, 2.24109e+09)};
+				\addplot[swizzle, visible on = <5->] coordinates
+					{(-1, 343323) (0, 299218) (1, 2.3168e+06) (2, 200154) (3, 1.98806e+09)};
+			\end{axis}
+		\end{tikzpicture}
+	}
+
+	\vspace{1.0em}
+
+	\centering
+	\begin{adjustbox}{totalheight = \textheight - 3.0em}
+		\begin{tabular}{cc}
+			\multicolumn{2}{c}{\ref{legendname}}					\\
+			\scalebox{1}{\eviction}	&	\scalebox{1}{\noeviction}
+		\end{tabular}
+	\end{adjustbox}
+	
+\end{frame}
+
+\subsection{Conclusion}
+
+\frame{\subsectionpage}
+
+\begin{frame}
+
+	\frametitle{Conclusion}
+	
+	\begin{block}{\uncover<2->{Overall Performance}}
+		\begin{itemize}
+			\uncover<3->{\item	Pointer swizzling couldn't improve the performance on TPC-C benchmark runs with a duration of \SI{10}{\minute}.}
+			\uncover<4->{\item	The page hits after the cold start couldn't compensate the overhead of pointer swizzling during the cold start.}
+			\uncover<5->{\item	A continuously running DB with large buffer pool could profit from pointer swizzling.}
+		\end{itemize}
+	\end{block}
+	
+	\begin{block}{\uncover<6->{Buffer Pool Performance}}
+		\begin{itemize}
+			\uncover<7->{\item	A page hit is faster when pointer swizzling is activated.}
+			\uncover<8->{\item	A page miss is slower when pointer swizzling is activated.}
+			\uncover<9->{\item	After the cold start phase, activated pointer swizzling will improve the buffer pool performance for large buffer pools.}
+		\end{itemize}
+	\end{block}
+
+\end{frame}
